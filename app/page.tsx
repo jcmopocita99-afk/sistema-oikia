@@ -1,162 +1,243 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function Home() {
 
-  const router = useRouter();
-
   const [terrenos, setTerrenos] = useState<any[]>([]);
-  const [user, setUser] = useState<any>(null);
+  const [detalleActivo, setDetalleActivo] = useState("");
+  const [mostrarModal, setMostrarModal] = useState(false);
 
-  // 🔐 PROTECCIÓN DE LOGIN
+  const [porcentaje, setPorcentaje] = useState(35);
+  const [descuento, setDescuento] = useState(10);
+
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [form, setForm] = useState({
+    codigo: "",
+    costo: "",
+
+    abogado_factura: "",
+    abogado_valor: "",
+    abogado_concepto: "",
+
+    alcabala_factura: "",
+    alcabala_valor: "",
+    alcabala_concepto: "",
+
+    registro_factura: "",
+    registro_valor: "",
+    registro_concepto: "",
+
+    notaria_factura: "",
+    notaria_valor: "",
+    notaria_concepto: "",
+
+    otros_factura: "",
+    otros_valor: "",
+    otros_concepto: ""
+  });
+
   useEffect(() => {
-    const session = localStorage.getItem("user");
-
-    if (!session) {
-      router.push("/login");
-      return;
-    }
-
-    const parsedUser = JSON.parse(session);
-    setUser(parsedUser);
-
-    fetch("/api/terrenos")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setTerrenos(data);
-        }
-      });
-
+    cargar();
   }, []);
 
-  // 📊 KPIs
-  const totalCosto = terrenos.reduce((sum, t) => sum + Number(t[5] || 0), 0);
-  const totalVenta = terrenos.reduce((sum, t) => sum + Number(t[6] || 0), 0);
-  const totalGastos = terrenos.reduce((sum, t) => sum + Number(t[7] || 0), 0);
+  const cerrarSesion = () => {
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+  };
 
-  const utilidadTotal = totalVenta - totalCosto - totalGastos;
+  const cargar = async () => {
+    try {
+      const res = await fetch("/api/terrenos");
+      const data = await res.json();
 
-  const rentabilidad =
-    totalCosto > 0 ? ((utilidadTotal / totalCosto) * 100).toFixed(2) : 0;
+      if (!Array.isArray(data)) throw new Error("Error al cargar");
+
+      setTerrenos(data);
+
+    } catch (e: any) {
+      setErrorMsg(e.message);
+    }
+  };
+
+  const gastos =
+    Number(form.abogado_valor || 0) +
+    Number(form.alcabala_valor || 0) +
+    Number(form.registro_valor || 0) +
+    Number(form.notaria_valor || 0) +
+    Number(form.otros_valor || 0);
+
+  const costoReal = Number(form.costo || 0) + gastos;
+
+  const ventaSugerida = Math.round(costoReal * (1 + porcentaje / 100));
+
+  const ventaMinima = Math.round(ventaSugerida * (1 - descuento / 100));
+
+  const guardar = async () => {
+    try {
+
+      const payload = {
+        ...form,
+        costo: costoReal,
+        venta: ventaSugerida,
+        gastos
+      };
+
+      const res = await fetch("/api/crear-terreno", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      alert("✅ Guardado");
+      cargar();
+
+    } catch (e: any) {
+      setErrorMsg(e.message);
+    }
+  };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{
+      padding: 20,
+      minHeight: "100vh",
+      backgroundImage: "url('/logo.png')",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "center",
+      backgroundSize: "250px",
+      backgroundColor: "#f5f5f5"
+    }}>
 
-      {/* 👤 USUARIO */}
-      <h2>
-        👤 {user?.usuario} ({user?.rol})
-      </h2>
+      <h2>🏘 Sistema Oikia</h2>
 
-      <h1>🏘 Oikia Santa Rosa – Control Financiero</h1>
-
-      {/* 🔐 LOGOUT */}
-      <button onClick={() => {
-        localStorage.removeItem("user");
-        window.location.href = "/login";
-      }}>
-        Cerrar sesión
+      <button onClick={cerrarSesion}>
+        🔒 Cerrar sesión
       </button>
+<button
+  style={{
+    padding: "8px 15px",
+    background: "#1B4F72",
+    color: "white",
+    border: "none",
+    borderRadius: 5,
+    cursor: "pointer",
+    marginLeft: 10
+  }}
+  onClick={() => window.location.href = "/ventas"}
+>
+  💼 Ir a Ventas
+</button>
+``
+      {errorMsg && <p>⚠ {errorMsg}</p>}
 
-      {/* 📊 KPIs */}
-      <div style={{ display: "flex", gap: 20, marginTop: 20, flexWrap: "wrap" }}>
+      <h4>Ganancia %</h4>
+      <input type="number" value={porcentaje}
+        onChange={e => setPorcentaje(Number(e.target.value))}/>
 
-        <div style={boxStyle}>
-          <h3>💰 Inversión</h3>
-          <p>${totalCosto}</p>
-        </div>
+      <h4>Descuento %</h4>
+      <input type="number" value={descuento}
+        onChange={e => setDescuento(Number(e.target.value))}/>
 
-        <div style={boxStyle}>
-          <h3>📈 Venta Total</h3>
-          <p>${totalVenta}</p>
-        </div>
+      <br />
 
-        <div style={boxStyle}>
-          <h3>💸 Gastos</h3>
-          <p>${totalGastos}</p>
-        </div>
+      <input placeholder="Código"
+        onChange={e => setForm({...form, codigo: e.target.value})}/>
 
-        <div style={boxStyle}>
-          <h3>✅ Utilidad</h3>
-          <p style={{ color: utilidadTotal >= 0 ? "green" : "red" }}>
-            ${utilidadTotal}
-          </p>
-        </div>
+      <input placeholder="Costo base"
+        onChange={e => setForm({...form, costo: e.target.value})}/>
 
-        <div style={boxStyle}>
-          <h3>📊 Rentabilidad</h3>
-          <p>{rentabilidad}%</p>
-        </div>
+      <h4>Abogado</h4>
+      <input placeholder="Factura"
+        onChange={e => setForm({...form, abogado_factura: e.target.value})}/>
+      <input placeholder="Valor"
+        onChange={e => setForm({...form, abogado_valor: e.target.value})}/>
+      <input placeholder="Concepto"
+        onChange={e => setForm({...form, abogado_concepto: e.target.value})}/>
 
-      </div>
+      <h4>Alcabala</h4>
+      <input placeholder="Factura"
+        onChange={e => setForm({...form, alcabala_factura: e.target.value})}/>
+      <input placeholder="Valor"
+        onChange={e => setForm({...form, alcabala_valor: e.target.value})}/>
+      <input placeholder="Concepto"
+        onChange={e => setForm({...form, alcabala_concepto: e.target.value})}/>
 
-      {/* 🔐 SOLO ADMIN */}
-      {user?.rol === "admin" && (
-        <div style={{ marginTop: 20 }}>
-          <button style={{ background: "#0070f3", color: "white", padding: 10 }}>
-            ➕ Agregar terreno (admin)
-          </button>
-        </div>
-      )}
+      <h4>Registro</h4>
+      <input placeholder="Factura"
+        onChange={e => setForm({...form, registro_factura: e.target.value})}/>
+      <input placeholder="Valor"
+        onChange={e => setForm({...form, registro_valor: e.target.value})}/>
+      <input placeholder="Concepto"
+        onChange={e => setForm({...form, registro_concepto: e.target.value})}/>
 
-      {/* 📋 TABLA */}
-      <table border="1" cellPadding="8" style={{ marginTop: 30, width: "100%" }}>
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Área</th>
-            <th>Costo</th>
-            <th>Venta</th>
-            <th>Gastos</th>
-            <th>Utilidad</th>
-          </tr>
-        </thead>
+      <h4>Notaría</h4>
+      <input placeholder="Factura"
+        onChange={e => setForm({...form, notaria_factura: e.target.value})}/>
+      <input placeholder="Valor"
+        onChange={e => setForm({...form, notaria_valor: e.target.value})}/>
+      <input placeholder="Concepto"
+        onChange={e => setForm({...form, notaria_concepto: e.target.value})}/>
 
+      <h4>Otros</h4>
+      <input placeholder="Factura"
+        onChange={e => setForm({...form, otros_factura: e.target.value})}/>
+      <input placeholder="Valor"
+        onChange={e => setForm({...form, otros_valor: e.target.value})}/>
+      <input placeholder="Concepto"
+        onChange={e => setForm({...form, otros_concepto: e.target.value})}/>
+
+      <br />
+      <button onClick={guardar}>💾 Guardar</button>
+
+      <h4>💸 Gastos: ${gastos}</h4>
+      <h4>💰 Costo Real: ${costoReal}</h4>
+      <h4>📈 Venta sugerida: ${ventaSugerida}</h4>
+      <h4>🔻 Venta mínima: ${ventaMinima}</h4>
+
+      <table border="1" style={{ marginTop: 20 }}>
         <tbody>
-          {terrenos.length === 0 ? (
-            <tr>
-              <td colSpan={6}>No hay datos</td>
+          {terrenos.map((t, i) => (
+            <tr key={i}>
+              <td>{t[2]}</td>
+              <td>${t[5]}</td>
+              <td>
+                <button onClick={() => {
+                  setDetalleActivo(t[9] || "Sin detalle");
+                  setMostrarModal(true);
+                }}>
+                  📄 Ver
+                </button>
+              </td>
             </tr>
-          ) : (
-            terrenos.map((t, i) => {
-
-              const costo = Number(t[5] || 0);
-              const venta = Number(t[6] || 0);
-              const gastos = Number(t[7] || 0);
-
-              const utilidad = venta - costo - gastos;
-
-              return (
-                <tr key={i}>
-                  <td>{t[2]}</td>
-                  <td>{t[4]}</td>
-                  <td>${costo}</td>
-                  <td>${venta}</td>
-                  <td>${gastos}</td>
-                  <td style={{ color: utilidad >= 0 ? "green" : "red" }}>
-                    ${utilidad}
-                  </td>
-                </tr>
-              );
-            })
-          )}
+          ))}
         </tbody>
-
       </table>
 
+      {mostrarModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "rgba(0,0,0,0.5)"
+        }}>
+          <div style={{
+            background: "white",
+            padding: 20,
+            margin: "100px auto",
+            width: 400
+          }}>
+            <pre>{detalleActivo}</pre>
+            <button onClick={() => setMostrarModal(false)}>Cerrar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-
-// 🎨 Estilo
-const boxStyle = {
-  border: "1px solid #ccc",
-  borderRadius: 10,
-  padding: 15,
-  width: 160,
-  textAlign: "center" as const,
-  background: "#f5f5f5"
-};
