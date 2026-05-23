@@ -1,4 +1,3 @@
-// Ubicación: src/app/api/terrenos/route.ts
 import { google } from "googleapis";
 import path from "path";
 
@@ -13,7 +12,6 @@ export async function GET() {
 
     const auth = new google.auth.GoogleAuth({
       keyFile: path.resolve("./sistema-oikia-1060432aa38e.json"),
-      // Solo lectura — más seguro que el scope completo
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
 
@@ -26,14 +24,12 @@ export async function GET() {
 
     const rows: string[][] = (response.data.values ?? []) as string[][];
 
-    // Filtrar encabezados o filas vacías
     const dataRows = rows.filter((row) => {
       const id = row[0];
       return id && id !== "ID" && id !== "id" && id.trim() !== "";
     });
 
     return Response.json(dataRows);
-
   } catch (error: unknown) {
     console.error("[GET /api/terrenos] Error:", error);
     const message =

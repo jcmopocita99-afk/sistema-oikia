@@ -1,87 +1,120 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from "react";
+import { AppShell } from "./components/AppShell";
+import { GastoBlock } from "./components/GastoBlock";
+import { Button } from "./components/ui/Button";
+import { Card } from "./components/ui/Card";
+import { Input } from "./components/ui/Input";
+import { Modal } from "./components/ui/Modal";
+import { Tabs, type TabItem } from "./components/ui/Tabs";
+
+const TABS: TabItem[] = [
+  { id: "registrar", label: "Registrar", icon: "➕" },
+  { id: "inventario", label: "Inventario", icon: "📋" },
+  { id: "parametros", label: "Parámetros", icon: "⚙️" },
+];
+
+const GASTO_KEYS = [
+  "abogado",
+  "alcabala",
+  "registro",
+  "notaria",
+  "otros",
+] as const;
+
+type GastoKey = (typeof GASTO_KEYS)[number];
+
+const GASTO_LABELS: Record<GastoKey, string> = {
+  abogado: "Abogado",
+  alcabala: "Alcabala",
+  registro: "Registro",
+  notaria: "Notaría",
+  otros: "Otros",
+};
+
+type FormState = {
+  codigo: string;
+  costo: string;
+} & Record<`${GastoKey}_factura` | `${GastoKey}_valor` | `${GastoKey}_concepto`, string>;
+
+const emptyForm = (): FormState => ({
+  codigo: "",
+  costo: "",
+  abogado_factura: "",
+  abogado_valor: "",
+  abogado_concepto: "",
+  alcabala_factura: "",
+  alcabala_valor: "",
+  alcabala_concepto: "",
+  registro_factura: "",
+  registro_valor: "",
+  registro_concepto: "",
+  notaria_factura: "",
+  notaria_valor: "",
+  notaria_concepto: "",
+  otros_factura: "",
+  otros_valor: "",
+  otros_concepto: "",
+});
 
 export default function Home() {
-
-  const [terrenos, setTerrenos] = useState<any[]>([]);
+  const [tab, setTab] = useState("registrar");
+  const [terrenos, setTerrenos] = useState<string[][]>([]);
   const [detalleActivo, setDetalleActivo] = useState("");
   const [mostrarModal, setMostrarModal] = useState(false);
-
   const [porcentaje, setPorcentaje] = useState(35);
   const [descuento, setDescuento] = useState(10);
-
   const [errorMsg, setErrorMsg] = useState("");
-
-  const [form, setForm] = useState({
-    codigo: "",
-    costo: "",
-
-    abogado_factura: "",
-    abogado_valor: "",
-    abogado_concepto: "",
-
-    alcabala_factura: "",
-    alcabala_valor: "",
-    alcabala_concepto: "",
-
-    registro_factura: "",
-    registro_valor: "",
-    registro_concepto: "",
-
-    notaria_factura: "",
-    notaria_valor: "",
-    notaria_concepto: "",
-
-    otros_factura: "",
-    otros_valor: "",
-    otros_concepto: ""
-  });
+  const [successMsg, setSuccessMsg] = useState("");
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     cargar();
   }, []);
 
-  const cerrarSesion = () => {
-    localStorage.removeItem("user");
-    window.location.href = "/login";
-  };
-
   const cargar = async () => {
     try {
       const res = await fetch("/api/terrenos");
       const data = await res.json();
-
-      if (!Array.isArray(data)) throw new Error("Error al cargar");
-
+      if (!Array.isArray(data)) throw new Error(data.error ?? "Error al cargar terrenos");
       setTerrenos(data);
-
-    } catch (e: any) {
-      setErrorMsg(e.message);
+      setErrorMsg("");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Error al cargar");
     }
   };
 
-  const gastos =
-    Number(form.abogado_valor || 0) +
-    Number(form.alcabala_valor || 0) +
-    Number(form.registro_valor || 0) +
-    Number(form.notaria_valor || 0) +
-    Number(form.otros_valor || 0);
+  const gastos = GASTO_KEYS.reduce(
+    (sum, key) => sum + Number(form[`${key}_valor`] || 0),
+    0
+  );
 
   const costoReal = Number(form.costo || 0) + gastos;
-
   const ventaSugerida = Math.round(costoReal * (1 + porcentaje / 100));
-
   const ventaMinima = Math.round(ventaSugerida * (1 - descuento / 100));
 
-  const guardar = async () => {
-    try {
+  const updateGasto = (key: GastoKey, field: "factura" | "valor" | "concepto", value: string) => {
+    setForm((prev) => ({ ...prev, [`${key}_${field}`]: value }));
+  };
 
+  const guardar = async () => {
+    setErrorMsg("");
+    setSuccessMsg("");
+    if (!form.codigo.trim()) {
+      setErrorMsg("El código del terreno es obligatorio.");
+      setTab("registrar");
+      return;
+    }
+
+    setGuardando(true);
+    try {
       const payload = {
         ...form,
         costo: costoReal,
         venta: ventaSugerida,
-        gastos
+        gastos,
       };
 
       const res = await fetch("/api/crear-terreno", {
@@ -91,153 +124,205 @@ export default function Home() {
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error al guardar");
 
-      if (!res.ok) throw new Error(data.error);
-
-      alert("✅ Guardado");
-      cargar();
-
-    } catch (e: any) {
-      setErrorMsg(e.message);
+      setSuccessMsg("Terreno registrado correctamente.");
+      setForm(emptyForm());
+      await cargar();
+      setTab("inventario");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setGuardando(false);
     }
   };
 
   return (
-    <div style={{
-      padding: 20,
-      minHeight: "100vh",
-      backgroundImage: "url('/logo.png')",
-      backgroundRepeat: "no-repeat",
-      backgroundPosition: "center",
-      backgroundSize: "250px",
-      backgroundColor: "#f5f5f5"
-    }}>
-
-      <h2>🏘 Sistema Oikia</h2>
-
-      <button onClick={cerrarSesion}>
-        🔒 Cerrar sesión
-      </button>
-<button
-  style={{
-    padding: "8px 15px",
-    background: "#1B4F72",
-    color: "white",
-    border: "none",
-    borderRadius: 5,
-    cursor: "pointer",
-    marginLeft: 10
-  }}
-  onClick={() => window.location.href = "/ventas"}
->
-  💼 Ir a Ventas
-</button>
-``
-      {errorMsg && <p>⚠ {errorMsg}</p>}
-
-      <h4>Ganancia %</h4>
-      <input type="number" value={porcentaje}
-        onChange={e => setPorcentaje(Number(e.target.value))}/>
-
-      <h4>Descuento %</h4>
-      <input type="number" value={descuento}
-        onChange={e => setDescuento(Number(e.target.value))}/>
-
-      <br />
-
-      <input placeholder="Código"
-        onChange={e => setForm({...form, codigo: e.target.value})}/>
-
-      <input placeholder="Costo base"
-        onChange={e => setForm({...form, costo: e.target.value})}/>
-
-      <h4>Abogado</h4>
-      <input placeholder="Factura"
-        onChange={e => setForm({...form, abogado_factura: e.target.value})}/>
-      <input placeholder="Valor"
-        onChange={e => setForm({...form, abogado_valor: e.target.value})}/>
-      <input placeholder="Concepto"
-        onChange={e => setForm({...form, abogado_concepto: e.target.value})}/>
-
-      <h4>Alcabala</h4>
-      <input placeholder="Factura"
-        onChange={e => setForm({...form, alcabala_factura: e.target.value})}/>
-      <input placeholder="Valor"
-        onChange={e => setForm({...form, alcabala_valor: e.target.value})}/>
-      <input placeholder="Concepto"
-        onChange={e => setForm({...form, alcabala_concepto: e.target.value})}/>
-
-      <h4>Registro</h4>
-      <input placeholder="Factura"
-        onChange={e => setForm({...form, registro_factura: e.target.value})}/>
-      <input placeholder="Valor"
-        onChange={e => setForm({...form, registro_valor: e.target.value})}/>
-      <input placeholder="Concepto"
-        onChange={e => setForm({...form, registro_concepto: e.target.value})}/>
-
-      <h4>Notaría</h4>
-      <input placeholder="Factura"
-        onChange={e => setForm({...form, notaria_factura: e.target.value})}/>
-      <input placeholder="Valor"
-        onChange={e => setForm({...form, notaria_valor: e.target.value})}/>
-      <input placeholder="Concepto"
-        onChange={e => setForm({...form, notaria_concepto: e.target.value})}/>
-
-      <h4>Otros</h4>
-      <input placeholder="Factura"
-        onChange={e => setForm({...form, otros_factura: e.target.value})}/>
-      <input placeholder="Valor"
-        onChange={e => setForm({...form, otros_valor: e.target.value})}/>
-      <input placeholder="Concepto"
-        onChange={e => setForm({...form, otros_concepto: e.target.value})}/>
-
-      <br />
-      <button onClick={guardar}>💾 Guardar</button>
-
-      <h4>💸 Gastos: ${gastos}</h4>
-      <h4>💰 Costo Real: ${costoReal}</h4>
-      <h4>📈 Venta sugerida: ${ventaSugerida}</h4>
-      <h4>🔻 Venta mínima: ${ventaMinima}</h4>
-
-      <table border="1" style={{ marginTop: 20 }}>
-        <tbody>
-          {terrenos.map((t, i) => (
-            <tr key={i}>
-              <td>{t[2]}</td>
-              <td>${t[5]}</td>
-              <td>
-                <button onClick={() => {
-                  setDetalleActivo(t[9] || "Sin detalle");
-                  setMostrarModal(true);
-                }}>
-                  📄 Ver
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {mostrarModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          background: "rgba(0,0,0,0.5)"
-        }}>
-          <div style={{
-            background: "white",
-            padding: 20,
-            margin: "100px auto",
-            width: 400
-          }}>
-            <pre>{detalleActivo}</pre>
-            <button onClick={() => setMostrarModal(false)}>Cerrar</button>
-          </div>
+    <AppShell
+      title="Terrenos"
+      subtitle="Registro, costos y listado de propiedades"
+    >
+      {(errorMsg || successMsg) && (
+        <div className="mb-4 space-y-2">
+          {errorMsg && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-[var(--oikia-danger)]">
+              {errorMsg}
+            </p>
+          )}
+          {successMsg && (
+            <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-[var(--oikia-accent)]">
+              {successMsg}
+            </p>
+          )}
         </div>
       )}
-    </div>
+
+      <Tabs tabs={TABS} active={tab} onChange={setTab}>
+        {tab === "registrar" && (
+          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+            <Card title="Datos del terreno" subtitle="Información base y gastos asociados">
+              <div className="mb-6 grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Código"
+                  placeholder="Ej. T-001"
+                  value={form.codigo}
+                  onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+                />
+                <Input
+                  label="Costo base"
+                  type="number"
+                  placeholder="0"
+                  value={form.costo}
+                  onChange={(e) => setForm({ ...form, costo: e.target.value })}
+                />
+              </div>
+
+              <div className="flex flex-col gap-6">
+                {GASTO_KEYS.map((key) => (
+                  <GastoBlock
+                    key={key}
+                    title={GASTO_LABELS[key]}
+                    values={{
+                      factura: form[`${key}_factura`],
+                      valor: form[`${key}_valor`],
+                      concepto: form[`${key}_concepto`],
+                    }}
+                    onChange={(field, value) => updateGasto(key, field, value)}
+                  />
+                ))}
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <Button onClick={guardar} disabled={guardando}>
+                  {guardando ? "Guardando…" : "Guardar terreno"}
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => setForm(emptyForm())}>
+                  Limpiar formulario
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Resumen" subtitle="Cálculo en tiempo real">
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between border-b border-[var(--oikia-border)] pb-2">
+                  <dt className="text-[var(--oikia-text-muted)]">Gastos</dt>
+                  <dd className="font-semibold">${gastos.toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between border-b border-[var(--oikia-border)] pb-2">
+                  <dt className="text-[var(--oikia-text-muted)]">Costo real</dt>
+                  <dd className="font-semibold">${costoReal.toLocaleString()}</dd>
+                </div>
+                <div className="flex justify-between border-b border-[var(--oikia-border)] pb-2">
+                  <dt className="text-[var(--oikia-text-muted)]">Venta sugerida</dt>
+                  <dd className="font-semibold text-[var(--oikia-accent)]">
+                    ${ventaSugerida.toLocaleString()}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-[var(--oikia-text-muted)]">Venta mínima</dt>
+                  <dd className="font-semibold text-[var(--oikia-warning)]">
+                    ${ventaMinima.toLocaleString()}
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          </div>
+        )}
+
+        {tab === "inventario" && (
+          <Card
+            title="Inventario de terrenos"
+            subtitle={`${terrenos.length} registro(s)`}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--oikia-border)] bg-[var(--oikia-surface-muted)] text-left">
+                    <th className="px-3 py-2 font-semibold">Código</th>
+                    <th className="px-3 py-2 font-semibold">Costo real</th>
+                    <th className="px-3 py-2 font-semibold">Venta sugerida</th>
+                    <th className="px-3 py-2 font-semibold text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {terrenos.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-[var(--oikia-text-muted)]">
+                        No hay terrenos registrados. Usa la pestaña Registrar.
+                      </td>
+                    </tr>
+                  ) : (
+                    terrenos.map((t, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-[var(--oikia-border)] hover:bg-[var(--oikia-surface-muted)]/60"
+                      >
+                        <td className="px-3 py-2 font-medium">{t[2]}</td>
+                        <td className="px-3 py-2">${Number(t[5] || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2">${Number(t[6] || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            variant="secondary"
+                            type="button"
+                            onClick={() => {
+                              setDetalleActivo(t[9] || "Sin detalle registrado.");
+                              setMostrarModal(true);
+                            }}
+                          >
+                            Ver detalle
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4">
+              <Button variant="ghost" type="button" onClick={cargar}>
+                Actualizar listado
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {tab === "parametros" && (
+          <Card
+            title="Parámetros de cálculo"
+            subtitle="Afectan la venta sugerida y mínima de nuevos terrenos"
+          >
+            <div className="grid max-w-md gap-4">
+              <Input
+                label="Ganancia (%)"
+                type="number"
+                value={porcentaje}
+                onChange={(e) => setPorcentaje(Number(e.target.value))}
+              />
+              <Input
+                label="Descuento máximo (%)"
+                type="number"
+                value={descuento}
+                onChange={(e) => setDescuento(Number(e.target.value))}
+              />
+            </div>
+            <p className="mt-4 text-sm text-[var(--oikia-text-muted)]">
+              Con ganancia {porcentaje}% y descuento {descuento}%, un costo de $100.000
+              sugiere venta ${Math.round(100000 * (1 + porcentaje / 100)).toLocaleString()}{" "}
+              y mínima $
+              {Math.round(
+                100000 * (1 + porcentaje / 100) * (1 - descuento / 100)
+              ).toLocaleString()}
+              .
+            </p>
+          </Card>
+        )}
+      </Tabs>
+
+      <Modal open={mostrarModal} title="Detalle del terreno" onClose={() => setMostrarModal(false)}>
+        <pre className="whitespace-pre-wrap rounded-lg bg-[var(--oikia-surface-muted)] p-3 text-sm">
+          {detalleActivo}
+        </pre>
+      </Modal>
+    </AppShell>
   );
 }
